@@ -1,0 +1,8 @@
+[package]
+name = "dexdey"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+jni = { version = "0.22.4", features = ["invocation"] }
+thiserror = "2.0.18"
