@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     let jvm_args = InitArgsBuilder::new()
         .option(format!(
             "-Djava.class.path={}:{}",
-            build_classpath("slf4j"),
+            build_classpath("java_libs"),
             build_classpath("plugins"),
         ))
         .build()?;

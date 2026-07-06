@@ -6,3 +6,8 @@ edition = "2024"
 [dependencies]
 jni = { version = "0.22.4", features = ["invocation"] }
 thiserror = "2.0.18"
+
+[build-dependencies]
+reqwest = { version = "0.13.4", features = ["stream"] }
+tokio = { version = "1.52.3", features = ["full"] }
+futures = "0.3.32"
