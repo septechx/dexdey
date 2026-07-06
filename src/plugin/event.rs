@@ -6,6 +6,7 @@ use jni::signature::RuntimeMethodSignature;
 use jni::strings::JNIString;
 use jni::vm::JavaVM;
 use jni::{jni_sig, jni_str};
+use tracing::error;
 
 #[derive(Debug)]
 pub(crate) struct RegisteredHandler {
@@ -232,7 +233,7 @@ pub(crate) fn fire_event<T: From<jni::errors::Error>>(
         let errors = f(env)?;
 
         for err in &errors {
-            eprintln!("{err}");
+            error!("{err}");
         }
 
         Ok(())
