@@ -1,6 +1,9 @@
 mod plugin;
 mod proxy;
 
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::EnvFilter;
+
 use crate::plugin::EventBus;
 use crate::proxy::Proxy;
 
@@ -18,7 +21,13 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
+        .init();
 
     plugin::init()?;
     let mut bus = EventBus::new();
