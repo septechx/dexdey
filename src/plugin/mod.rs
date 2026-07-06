@@ -1,7 +1,12 @@
+mod load;
+mod parse;
+
 use std::fs;
 use std::path::Path;
 
 use jni::vm::{InitArgsBuilder, JavaVM};
+
+pub(crate) use load::{LoadPluginError, load_plugins};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum PluginInitError {
