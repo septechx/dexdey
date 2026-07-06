@@ -1,10 +1,6 @@
 mod plugin;
 
-use jni::{jni_sig, jni_str};
-
-use plugin::EventBus;
-
-use crate::plugin::fire_event;
+use crate::plugin::{Event, EventBus, fire_event};
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -23,18 +19,7 @@ fn main() -> Result<()> {
     let mut bus = EventBus::new();
     plugin::load_plugins(&mut bus)?;
 
-    fire_event(|env| -> Result<_> {
-        let event_class = env.find_class(jni_str!(
-            "com/velocitypowered/api/event/proxy/ProxyInitializeEvent"
-        ))?;
-        let event = env.new_object(event_class, jni_sig!("()V"), &[])?;
-
-        Ok(bus.fire(
-            env,
-            &event,
-            "com.velocitypowered.api.event.proxy.ProxyInitializeEvent",
-        ))
-    })?;
+    fire_event(|env| -> Result<_> { Ok(bus.fire_event(env, Event::proxy_initialize()?)) })?;
 
     Ok(())
 }

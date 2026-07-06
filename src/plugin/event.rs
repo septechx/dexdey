@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use jni::Env;
-use jni::objects::{Global, JObject, JObjectArray, JString, JValue};
+use jni::objects::{Global, JClass, JObject, JObjectArray, JString, JValue};
 use jni::signature::RuntimeMethodSignature;
 use jni::strings::JNIString;
 use jni::vm::JavaVM;
@@ -186,6 +186,41 @@ impl EventBus {
         }
 
         errors
+    }
+
+    pub fn fire_event(&self, env: &mut Env, event: Event) -> Vec<EventBusError> {
+        self.fire(env, &event.event, &event.event_class)
+    }
+}
+
+pub(crate) struct Event {
+    pub event_class: String,
+    pub event: Global<JObject<'static>>,
+}
+
+impl Event {
+    pub fn proxy_initialize() -> core::result::Result<Event, jni::errors::Error> {
+        Event::new(
+            "com.velocitypowered.api.event.proxy.ProxyInitializeEvent",
+            |env, class| {
+                let obj = env.new_object(class, jni_sig!("()V"), &[])?;
+                env.new_global_ref(&obj)
+            },
+        )
+    }
+
+    fn new<T: From<jni::errors::Error>>(
+        class_name: &str,
+        event: impl FnOnce(&mut Env, JClass) -> core::result::Result<Global<JObject<'static>>, T>,
+    ) -> core::result::Result<Event, T> {
+        let jvm = JavaVM::singleton()?;
+        jvm.attach_current_thread(|env| -> core::result::Result<Event, T> {
+            let class = env.find_class(JNIString::from(class_name.replace('.', "/")))?;
+            event(env, class).map(|global| Event {
+                event_class: class_name.to_string(),
+                event: global,
+            })
+        })
     }
 }
 
