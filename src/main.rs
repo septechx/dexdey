@@ -1,7 +1,6 @@
-use std::fs;
-use std::path::Path;
+mod plugin;
 
-use jni::vm::{InitArgsBuilder, JavaVM};
+use jni::vm::JavaVM;
 use jni::{JValue, jni_sig, jni_str};
 
 #[derive(Debug, thiserror::Error)]
@@ -14,19 +13,16 @@ enum Error {
     StartJvm(#[from] jni::errors::StartJvmError),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("Plugin init error: {0}")]
+    PluginInit(#[from] plugin::PluginInitError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
 
 fn main() -> Result<()> {
-    let jvm_args = InitArgsBuilder::new()
-        .option(format!(
-            "-Djava.class.path={}:{}",
-            build_classpath("java_libs"),
-            build_classpath("plugins"),
-        ))
-        .build()?;
-    let jvm = JavaVM::new(jvm_args)?;
+    plugin::init()?;
+
+    let jvm = JavaVM::singleton()?;
 
     jvm.attach_current_thread(|env| -> Result<()> {
         let class = env.load_class(jni_str!("com.siesque.testPlugin.TestPlugin"))?;
@@ -65,22 +61,4 @@ fn main() -> Result<()> {
 
         Ok(())
     })
-}
-
-fn build_classpath<P: AsRef<Path>>(dir: P) -> String {
-    let mut entries = vec![];
-    for entry in fs::read_dir(dir).unwrap() {
-        let entry = entry.unwrap();
-
-        if entry.file_type().unwrap().is_dir() {
-            let path = entry.path();
-            entries.push(build_classpath(path));
-        }
-
-        let path = entry.path();
-        if path.extension().is_some_and(|e| e == "jar") {
-            entries.push(path.to_string_lossy().to_string());
-        }
-    }
-    entries.join(":")
 }
