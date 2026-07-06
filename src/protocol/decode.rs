@@ -4,6 +4,7 @@ use crate::protocol::ConnectionState;
 use crate::protocol::error::ProtocolError;
 use crate::protocol::packet::ServerPacket;
 use crate::protocol::packets::handshake::SHandshake;
+use crate::protocol::packets::login::SLoginStart;
 use crate::protocol::packets::status::{SPing, SRequest};
 use crate::protocol::varint::{PacketReader, decode_varint, encode_varint};
 use crate::protocol::version::ProtocolVersion;
@@ -13,6 +14,7 @@ pub enum DecodedServerPacket {
     Handshake(SHandshake),
     StatusRequest(SRequest),
     StatusPing(SPing),
+    LoginStart(SLoginStart),
     Unknown { id: i32, data: Vec<u8> },
 }
 
@@ -22,6 +24,7 @@ impl DecodedServerPacket {
             Self::Handshake(_) => 0x00,
             Self::StatusRequest(_) => 0x00,
             Self::StatusPing(_) => 0x01,
+            Self::LoginStart(_) => 0x00,
             Self::Unknown { id, .. } => *id,
         }
     }
@@ -104,6 +107,16 @@ impl PacketDecoder {
                     id: packet_id,
                     state: self.state,
                     direction: crate::protocol::Direction::Serverbound,
+                }),
+            },
+            ConnectionState::Login => match packet_id {
+                0x00 => {
+                    let pkt = SLoginStart::read(&mut reader, self.version)?;
+                    Ok(DecodedServerPacket::LoginStart(pkt))
+                }
+                _ => Ok(DecodedServerPacket::Unknown {
+                    id: packet_id,
+                    data: reader.read_remaining().to_vec(),
                 }),
             },
             _ => Ok(DecodedServerPacket::Unknown {

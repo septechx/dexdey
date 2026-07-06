@@ -3,6 +3,7 @@
 
 pub mod decode;
 pub mod error;
+pub mod forwarding;
 pub mod frame;
 pub mod packet;
 pub mod packets;
