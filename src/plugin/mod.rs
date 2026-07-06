@@ -1,3 +1,4 @@
+mod event;
 mod load;
 mod parse;
 
@@ -6,6 +7,7 @@ use std::path::Path;
 
 use jni::vm::{InitArgsBuilder, JavaVM};
 
+pub(crate) use event::{EventBus, fire_event};
 pub(crate) use load::{LoadPluginError, load_plugins};
 
 #[derive(Debug, thiserror::Error)]

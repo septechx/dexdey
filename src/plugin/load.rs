@@ -6,6 +6,7 @@ use jni::strings::JNIString;
 use jni::vm::JavaVM;
 use jni::{JValue, jni_sig, jni_str};
 
+use crate::plugin::EventBus;
 use crate::plugin::parse::parse_velocity_plugin;
 
 #[allow(dead_code)]
@@ -26,17 +27,19 @@ pub(crate) enum LoadPluginError {
     Parse(#[from] crate::plugin::parse::ParsePluginError),
     #[error("JNI error: {0}")]
     Jvm(#[from] jni::errors::Error),
+    #[error("EventBus error: {0}")]
+    EventBus(#[from] crate::plugin::event::EventBusError),
 }
 
 type Result<T> = std::result::Result<T, LoadPluginError>;
 
-pub(crate) fn load_plugins() -> Result<Vec<Plugin>> {
+pub(crate) fn load_plugins(bus: &mut EventBus) -> Result<Vec<Plugin>> {
     let mut plugins = vec![];
     for entry in fs::read_dir("plugins")? {
         let entry = entry?;
 
         if entry.file_type()?.is_dir() {
-            load_plugins()?;
+            load_plugins(bus)?;
             continue;
         }
 
@@ -79,6 +82,7 @@ pub(crate) fn load_plugins() -> Result<Vec<Plugin>> {
             )?;
 
             let instance = env.new_global_ref(instance)?;
+            bus.register_plugin(env, &plugin.id, &instance)?;
 
             loaded_plugins.push(Plugin {
                 id: plugin.id,

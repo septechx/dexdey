@@ -1,7 +1,10 @@
 mod plugin;
 
-use jni::vm::JavaVM;
-use jni::{JValue, jni_sig, jni_str};
+use jni::{jni_sig, jni_str};
+
+use plugin::EventBus;
+
+use crate::plugin::fire_event;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -17,25 +20,20 @@ type Result<T> = std::result::Result<T, Error>;
 
 fn main() -> Result<()> {
     plugin::init()?;
-    let plugins = plugin::load_plugins()?;
+    let mut bus = EventBus::new();
+    plugin::load_plugins(&mut bus)?;
 
-    let jvm = JavaVM::singleton()?;
-    jvm.attach_current_thread(|env| -> Result<()> {
-        for plugin in plugins {
-            let event_class = env.find_class(jni_str!(
-                "com/velocitypowered/api/event/proxy/ProxyInitializeEvent"
-            ))?;
-            let event = env.new_object(event_class, jni_sig!("()V"), &[])?;
+    fire_event(|env| -> Result<_> {
+        let event_class = env.find_class(jni_str!(
+            "com/velocitypowered/api/event/proxy/ProxyInitializeEvent"
+        ))?;
+        let event = env.new_object(event_class, jni_sig!("()V"), &[])?;
 
-            env.call_method(
-                plugin.instance,
-                jni_str!("onProxyInitialization"),
-                jni_sig!("(Lcom/velocitypowered/api/event/proxy/ProxyInitializeEvent;)V"),
-                &[JValue::Object(&event)],
-            )?;
-        }
-
-        Ok(())
+        Ok(bus.fire(
+            env,
+            &event,
+            "com.velocitypowered.api.event.proxy.ProxyInitializeEvent",
+        ))
     })?;
 
     Ok(())
