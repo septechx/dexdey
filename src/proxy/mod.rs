@@ -1,10 +1,26 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
-use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{error, info, trace, warn};
+use tokio::sync::Mutex;
+use tracing::{debug, error, info, trace, warn};
 
 use crate::plugin::{Event, EventBus, fire_event};
+use crate::protocol::decode::PacketDecoder;
+use crate::protocol::frame::{FramedReader, FramedWriter};
+
+fn hex_dump(buf: &[u8]) -> String {
+    use std::fmt::Write;
+    let n = buf.len().min(32);
+    let mut s = String::with_capacity(n * 3 + 10);
+    for &b in &buf[..n] {
+        write!(&mut s, "{b:02X} ").unwrap();
+    }
+    if buf.len() > 32 {
+        write!(&mut s, "… (+{})", buf.len() - 32).unwrap();
+    }
+    s
+}
 
 pub(crate) struct Proxy {
     event_bus: EventBus,
@@ -42,23 +58,68 @@ impl Proxy {
             }
         };
 
-        let (mut ri, mut wi) = socket.into_split();
-        let (mut ru, mut wu) = upstream.into_split();
+        let (client_read, client_write) = socket.into_split();
+        let (upstream_read, upstream_write) = upstream.into_split();
 
-        let client_to_upstream = io::copy(&mut ri, &mut wu);
-        let upstream_to_client = io::copy(&mut ru, &mut wi);
+        let decoder = Arc::new(Mutex::new(PacketDecoder::new()));
+
+        let dec_cs = decoder.clone();
+        let cs_task = tokio::spawn(async move {
+            let mut reader = FramedReader::new(client_read);
+            let mut writer = FramedWriter::new(upstream_write);
+
+            loop {
+                let frame = match reader.read_frame().await {
+                    Ok(f) => f,
+                    Err(e) => {
+                        debug!("CS connection closed: {e}");
+                        break;
+                    }
+                };
+
+                let mut dec = dec_cs.lock().await;
+                match dec.decode_serverbound(&frame) {
+                    Ok(pkt) => {
+                        debug!("CS [{}] {:?} ({}B)", dec.state(), pkt, frame.len());
+                    }
+                    Err(e) => {
+                        warn!("CS decode error: {e}");
+                    }
+                }
+                drop(dec);
+
+                trace!("CS → upstream ({}B) {}", frame.len(), hex_dump(&frame));
+                if let Err(e) = writer.write_frame(&frame).await {
+                    warn!("CS write error: {e}");
+                    break;
+                }
+            }
+        });
+
+        let sc_task = tokio::spawn(async move {
+            let mut reader = FramedReader::new(upstream_read);
+            let mut writer = FramedWriter::new(client_write);
+
+            loop {
+                let frame = match reader.read_frame().await {
+                    Ok(f) => f,
+                    Err(e) => {
+                        debug!("SC connection closed: {e}");
+                        break;
+                    }
+                };
+
+                trace!("SC ← upstream ({}B) {}", frame.len(), hex_dump(&frame));
+                if let Err(e) = writer.write_frame(&frame).await {
+                    warn!("SC write error: {e}");
+                    break;
+                }
+            }
+        });
 
         tokio::select! {
-            r = client_to_upstream => {
-                if let Err(e) = r {
-                    warn!("client->upstream error: {e}");
-                }
-            }
-            r = upstream_to_client => {
-                if let Err(e) = r {
-                    warn!("upstream->client error: {e}");
-                }
-            }
+            _ = cs_task => trace!("CS task finished"),
+            _ = sc_task => trace!("SC task finished"),
         }
     }
 }

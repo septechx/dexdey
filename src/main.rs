@@ -1,4 +1,5 @@
 mod plugin;
+mod protocol;
 mod proxy;
 
 use tracing::level_filters::LevelFilter;
