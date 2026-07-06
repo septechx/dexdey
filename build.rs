@@ -8,8 +8,9 @@ async fn main() {
     fs::create_dir_all(&out).await.unwrap();
 
     let packages = [
-        "org/slf4j/slf4j-api:2.0.18",
-        "org/slf4j/slf4j-simple:2.0.18",
+        "maven$org/slf4j/slf4j-api:2.0.18",
+        "maven$org/slf4j/slf4j-simple:2.0.18",
+        "paper$com/velocitypowered/velocity-api:3.5.0-SNAPSHOT",
     ];
 
     let tasks = packages.into_iter().map(|package| download(&out, package));
@@ -20,6 +21,7 @@ async fn main() {
 }
 
 async fn download(out: &Path, package: &str) {
+    let (repo, package) = package.split_once('$').unwrap();
     let (name, version) = package.split_once(':').unwrap();
     let (_, artifact) = name.rsplit_once('/').unwrap();
 
@@ -27,11 +29,25 @@ async fn download(out: &Path, package: &str) {
         return;
     }
 
-    eprintln!("Downloading {}", package);
+    let repo = get_repo(repo);
 
-    let url = format!("https://repo1.maven.org/maven2/{name}/{version}/{artifact}-{version}.jar");
+    println!("cargo:warning=Downloading {package} from {repo}");
 
-    let response = reqwest::get(url).await.unwrap();
+    let base_url = format!("https://{repo}/{name}/{version}");
+    let resolved_version = if version.ends_with("-SNAPSHOT") {
+        resolve_snapshot(&base_url).await
+    } else {
+        version.to_string()
+    };
+
+    let url = format!("{base_url}/{artifact}-{resolved_version}.jar");
+
+    let response = reqwest::get(&url).await.unwrap();
+    let status = response.status();
+    if !status.is_success() {
+        let text = response.text().await.unwrap();
+        panic!("Failed to download {url}: {status} - {text}");
+    }
 
     let mut stream = response.bytes_stream();
     let mut file = fs::File::create(out.join(format!("{artifact}.jar")))
@@ -44,4 +60,38 @@ async fn download(out: &Path, package: &str) {
     }
 
     file.flush().await.unwrap();
+}
+
+async fn resolve_snapshot(base_url: &str) -> String {
+    let metadata_url = format!("{base_url}/maven-metadata.xml");
+    let resp = reqwest::get(&metadata_url).await.unwrap();
+    let text = resp.text().await.unwrap();
+
+    let doc = roxmltree::Document::parse(&text).unwrap();
+
+    let value = doc
+        .descendants()
+        .filter(|n| n.has_tag_name("snapshotVersion"))
+        .find_map(|sv| {
+            let ext = sv
+                .descendants()
+                .find(|n| n.has_tag_name("extension"))?
+                .text()?;
+            if ext == "jar" {
+                sv.descendants().find(|n| n.has_tag_name("value"))?.text()
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    value.to_string()
+}
+
+fn get_repo(repo: &str) -> &str {
+    match repo {
+        "maven" => "repo1.maven.org/maven2",
+        "paper" => "repo.papermc.io/repository/maven-public",
+        _ => panic!("Unknown repo: {}", repo),
+    }
 }

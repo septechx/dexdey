@@ -11,3 +11,4 @@ thiserror = "2.0.18"
 reqwest = { version = "0.13.4", features = ["stream"] }
 tokio = { version = "1.52.3", features = ["full"] }
 futures = "0.3.32"
+roxmltree = "0.20.0"

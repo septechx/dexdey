@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::Path;
 
-use jni::objects::JObject;
 use jni::vm::{InitArgsBuilder, JavaVM};
 use jni::{JValue, jni_sig, jni_str};
 
@@ -52,11 +51,16 @@ fn main() -> Result<()> {
             JValue::Object(&logger),
         )?;
 
+        let event_class = env.find_class(jni_str!(
+            "com/velocitypowered/api/event/proxy/ProxyInitializeEvent"
+        ))?;
+        let event = env.new_object(event_class, jni_sig!("()V"), &[])?;
+
         env.call_method(
             &instance,
             jni_str!("onProxyInitialization"),
             jni_sig!("(Lcom/velocitypowered/api/event/proxy/ProxyInitializeEvent;)V"),
-            &[JValue::Object(&JObject::null())],
+            &[JValue::Object(&event)],
         )?;
 
         Ok(())
